@@ -14,6 +14,7 @@ import com.simibubi.create.content.contraptions.base.IRotate.SpeedLevel;
 import com.simibubi.create.content.contraptions.base.IRotate.StressImpact;
 import com.simibubi.create.content.contraptions.goggles.IHaveGoggleInformation;
 import com.simibubi.create.content.contraptions.goggles.IHaveHoveringInformation;
+import com.simibubi.create.content.contraptions.relays.elementary.ICogWheel;
 import com.simibubi.create.foundation.config.AllConfigs;
 import com.simibubi.create.foundation.item.TooltipHelper;
 import com.simibubi.create.foundation.render.backend.FastRenderDispatcher;
@@ -59,8 +60,8 @@ public abstract class KineticTileEntity extends SmartTileEntity
 	private int flickerTally;
 	private int networkSize;
 	private int validationCountdown;
-	private float lastStressApplied;
-	private float lastCapacityProvided;
+	protected float lastStressApplied;
+	protected float lastCapacityProvided;
 
 	public KineticTileEntity(TileEntityType<?> typeIn) {
 		super(typeIn);
@@ -160,7 +161,7 @@ public abstract class KineticTileEntity extends SmartTileEntity
 	}
 
 	public float calculateStressApplied() {
-		float impact = (float) AllConfigs.SERVER.kinetics.stressValues.getImpactOf(getBlockState().getBlock());
+		float impact = (float) AllConfigs.SERVER.kinetics.stressValues.getImpactOf(getStressConfigKey());
 		this.lastStressApplied = impact;
 		return impact;
 	}
@@ -529,7 +530,7 @@ public abstract class KineticTileEntity extends SmartTileEntity
 	}
 
 	protected boolean canPropagateDiagonally(IRotate block, BlockState state) {
-		return block.hasIntegratedCogwheel(world, pos, state);
+		return ICogWheel.isSmallCog(state);
 	}
 
 	@Override

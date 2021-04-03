@@ -3,7 +3,7 @@ package com.simibubi.create.content.contraptions.base;
 import java.nio.ByteBuffer;
 
 import com.simibubi.create.foundation.render.backend.instancing.InstancedModel;
-import com.simibubi.create.foundation.render.backend.instancing.impl.BasicData;
+import com.simibubi.create.foundation.render.backend.core.BasicData;
 import com.simibubi.create.foundation.utility.ColorHelper;
 
 import net.minecraft.client.renderer.Vector3f;
@@ -28,16 +28,11 @@ public class KineticData extends BasicData {
         return setPosition(pos.getX(), pos.getY(), pos.getZ());
     }
 
-    public KineticData setPosition(int x, int y, int z) {
-        return setPosition((float) (x),
-                           (float) (y),
-                           (float) (z));
-    }
-
     public KineticData setPosition(float x, float y, float z) {
         this.x = x;
         this.y = y;
         this.z = z;
+        markDirty();
         return this;
     }
 
@@ -45,6 +40,7 @@ public class KineticData extends BasicData {
         this.x += x;
         this.y += y;
         this.z += z;
+        markDirty();
         return this;
     }
 

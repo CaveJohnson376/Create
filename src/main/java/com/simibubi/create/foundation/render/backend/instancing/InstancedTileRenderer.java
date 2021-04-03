@@ -5,11 +5,12 @@ import java.util.*;
 import javax.annotation.Nullable;
 
 import com.simibubi.create.foundation.render.backend.Backend;
-import com.simibubi.create.foundation.render.backend.RenderMaterials;
+import com.simibubi.create.foundation.render.backend.MaterialType;
+import com.simibubi.create.foundation.render.backend.MaterialTypes;
 import com.simibubi.create.foundation.render.backend.gl.BasicProgram;
 import com.simibubi.create.foundation.render.backend.gl.shader.ShaderCallback;
-import com.simibubi.create.foundation.render.backend.instancing.impl.ModelData;
-import com.simibubi.create.foundation.render.backend.instancing.impl.OrientedData;
+import com.simibubi.create.foundation.render.backend.core.ModelData;
+import com.simibubi.create.foundation.render.backend.core.OrientedData;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.*;
@@ -29,6 +30,7 @@ public abstract class InstancedTileRenderer<P extends BasicProgram> {
     protected Map<MaterialType<?>, RenderMaterial<P, ?>> materials = new HashMap<>();
 
     protected int frame;
+    protected int tick;
 
     protected InstancedTileRenderer() {
         registerMaterials();
@@ -39,6 +41,8 @@ public abstract class InstancedTileRenderer<P extends BasicProgram> {
     public abstract void registerMaterials();
 
     public void tick(double cameraX, double cameraY, double cameraZ) {
+        tick++;
+
         // integer camera pos
         int cX = (int) cameraX;
         int cY = (int) cameraY;
@@ -57,11 +61,7 @@ public abstract class InstancedTileRenderer<P extends BasicProgram> {
                 int dY = pos.getY() - cY;
                 int dZ = pos.getZ() - cZ;
 
-                int dSq = dX * dX + dY * dY + dZ * dZ;
-
-                int divisor = (dSq / 1024) + 1;
-
-                if (frame % divisor == 0)
+                if ((tick % getUpdateDivisor(dX, dY, dZ)) == 0)
                     instance.tick();
             }
         }
@@ -88,21 +88,7 @@ public abstract class InstancedTileRenderer<P extends BasicProgram> {
                     continue;
                 }
 
-                BlockPos pos = dyn.getWorldPosition();
-
-                int dX = pos.getX() - cX;
-                int dY = pos.getY() - cY;
-                int dZ = pos.getZ() - cZ;
-
-                float dot = dX * lookX + dY * lookY + dZ * lookZ;
-
-                if (dot < 0) continue; // is it behind the camera?
-
-                int dSq = dX * dX + dY * dY + dZ * dZ;
-
-                int divisor = (dSq / 1024) + 1; // https://www.desmos.com/calculator/aaycpludsy
-
-                if (frame % divisor == 0)
+                if (shouldTick(dyn.getWorldPosition(), lookX, lookY, lookZ, cX, cY, cZ))
                     dyn.beginFrame();
             }
         }
@@ -125,11 +111,11 @@ public abstract class InstancedTileRenderer<P extends BasicProgram> {
     }
 
     public RenderMaterial<P, InstancedModel<ModelData>> getTransformMaterial() {
-        return getMaterial(RenderMaterials.TRANSFORMED);
+        return getMaterial(MaterialTypes.TRANSFORMED);
     }
 
     public RenderMaterial<P, InstancedModel<OrientedData>> getOrientedMaterial() {
-        return getMaterial(RenderMaterials.ORIENTED);
+        return getMaterial(MaterialTypes.ORIENTED);
     }
 
     @SuppressWarnings("unchecked")
@@ -205,6 +191,24 @@ public abstract class InstancedTileRenderer<P extends BasicProgram> {
             queuedAdditions.forEach(this::addInternal);
             queuedAdditions.clear();
         }
+    }
+
+    protected boolean shouldTick(BlockPos worldPos, float lookX, float lookY, float lookZ, int cX, int cY, int cZ) {
+        int dX = worldPos.getX() - cX;
+        int dY = worldPos.getY() - cY;
+        int dZ = worldPos.getZ() - cZ;
+
+        float dot = (dX + lookX * 2) * lookX + (dY + lookY * 2) * lookY + (dZ + lookZ * 2) * lookZ;
+
+        if (dot < 0) return false; // is it more than 2 blocks behind the camera?
+
+        return (frame % getUpdateDivisor(dX, dY, dZ)) == 0;
+    }
+
+    protected int getUpdateDivisor(int dX, int dY, int dZ) {
+        int dSq = dX * dX + dY * dY + dZ * dZ;
+
+        return (dSq / 1024) + 1;
     }
 
     private void addInternal(TileEntity tile) {

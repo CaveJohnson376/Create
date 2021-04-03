@@ -7,7 +7,7 @@ import com.simibubi.create.content.contraptions.base.RotatingData;
 import com.simibubi.create.content.contraptions.base.SingleRotatingInstance;
 import com.simibubi.create.foundation.render.backend.instancing.*;
 
-import com.simibubi.create.foundation.render.backend.instancing.impl.ModelData;
+import com.simibubi.create.foundation.render.backend.core.ModelData;
 import com.simibubi.create.foundation.utility.AnimationTickHolder;
 import com.simibubi.create.foundation.utility.ColorHelper;
 import com.simibubi.create.foundation.utility.Iterate;
@@ -22,17 +22,23 @@ import java.util.ArrayList;
 
 public class ArmInstance extends SingleRotatingInstance implements IDynamicInstance {
 
-	final InstanceKey<ModelData> base;
-	final InstanceKey<ModelData> lowerBody;
-	final InstanceKey<ModelData> upperBody;
-	final InstanceKey<ModelData> head;
-	final InstanceKey<ModelData> claw;
-	private final ArrayList<InstanceKey<ModelData>> clawGrips;
+	final ModelData base;
+	final ModelData lowerBody;
+	final ModelData upperBody;
+	final ModelData head;
+	final ModelData claw;
+	private final ArrayList<ModelData> clawGrips;
 
-	private final ArrayList<InstanceKey<ModelData>> models;
+	private final ArrayList<ModelData> models;
 	private final ArmTileEntity arm;
+	private final Boolean ceiling;
 
 	private boolean firstTick = true;
+
+	private float baseAngle = Float.NaN;
+	private float lowerArmAngle = Float.NaN;
+	private float upperArmAngle = Float.NaN;
+	private float headAngle = Float.NaN;
 
 	public ArmInstance(InstancedTileRenderer<?> modelManager, ArmTileEntity tile) {
 		super(modelManager, tile);
@@ -46,37 +52,55 @@ public class ArmInstance extends SingleRotatingInstance implements IDynamicInsta
 		claw = mat.getModel(AllBlockPartials.ARM_CLAW_BASE, blockState).createInstance();
 
 		InstancedModel<ModelData> clawHalfModel = mat.getModel(AllBlockPartials.ARM_CLAW_GRIP, blockState);
-		InstanceKey<ModelData> clawGrip1 = clawHalfModel.createInstance();
-		InstanceKey<ModelData> clawGrip2 = clawHalfModel.createInstance();
+		ModelData clawGrip1 = clawHalfModel.createInstance();
+		ModelData clawGrip2 = clawHalfModel.createInstance();
 
 		clawGrips = Lists.newArrayList(clawGrip1, clawGrip2);
 		models = Lists.newArrayList(base, lowerBody, upperBody, head, claw, clawGrip1, clawGrip2);
 		arm = tile;
+		ceiling = blockState.get(ArmBlock.CEILING);
 
 		animateArm(false);
 	}
 
 	@Override
 	public void beginFrame() {
+		if (arm.phase == ArmTileEntity.Phase.DANCING) {
+			animateArm(true);
+			return;
+		}
 
-		boolean settled = arm.baseAngle.settled() && arm.lowerArmAngle.settled() && arm.upperArmAngle.settled() && arm.headAngle.settled();
-		boolean rave = arm.phase == ArmTileEntity.Phase.DANCING;
+		float pt = AnimationTickHolder.getPartialTicks();
 
-		if (!settled || rave || firstTick)
-			animateArm(rave);
+		float baseAngleNow = this.arm.baseAngle.get(pt);
+		float lowerArmAngleNow = this.arm.lowerArmAngle.get(pt);
+		float upperArmAngleNow = this.arm.upperArmAngle.get(pt);
+		float headAngleNow = this.arm.headAngle.get(pt);
+
+		boolean settled = MathHelper.epsilonEquals(baseAngle, baseAngleNow)
+				&& MathHelper.epsilonEquals(lowerArmAngle, lowerArmAngleNow)
+				&& MathHelper.epsilonEquals(upperArmAngle, upperArmAngleNow)
+				&& MathHelper.epsilonEquals(headAngle, headAngleNow);
+
+		this.baseAngle = baseAngleNow;
+		this.lowerArmAngle = lowerArmAngleNow;
+		this.upperArmAngle = upperArmAngleNow;
+		this.headAngle = headAngleNow;
+
+		if (!settled || firstTick)
+			animateArm(false);
 
 		if (settled)
 			firstTick = false;
 	}
 
 	private void animateArm(boolean rave) {
-		float pt = AnimationTickHolder.getPartialTicks();
-		int color = 0xFFFFFF;
 
-		float baseAngle = this.arm.baseAngle.get(pt);
-		float lowerArmAngle = this.arm.lowerArmAngle.get(pt) - 135;
-		float upperArmAngle = this.arm.upperArmAngle.get(pt) - 90;
-		float headAngle = this.arm.headAngle.get(pt);
+		int color;
+		float baseAngle;
+		float lowerArmAngle;
+		float upperArmAngle;
+		float headAngle;
 
 		if (rave) {
 			float renderTick = AnimationTickHolder.getRenderTime(this.arm.getWorld()) + (tile.hashCode() % 64);
@@ -84,7 +108,15 @@ public class ArmInstance extends SingleRotatingInstance implements IDynamicInsta
 			lowerArmAngle = MathHelper.lerp((MathHelper.sin(renderTick / 4) + 1) / 2, -45, 15);
 			upperArmAngle = MathHelper.lerp((MathHelper.sin(renderTick / 8) + 1) / 4, -45, 95);
 			headAngle = -lowerArmAngle;
+
 			color = ColorHelper.rainbowColor(AnimationTickHolder.getTicks() * 100);
+		} else {
+			baseAngle = this.baseAngle;
+			lowerArmAngle = this.lowerArmAngle - 135;
+			upperArmAngle = this.upperArmAngle - 90;
+			headAngle = this.headAngle;
+
+			color = 0xFFFFFF;
 		}
 
 		MatrixStack msLocal = new MatrixStack();
@@ -92,30 +124,25 @@ public class ArmInstance extends SingleRotatingInstance implements IDynamicInsta
 		msr.translate(getInstancePosition());
 		msr.centre();
 
-		if (blockState.get(ArmBlock.CEILING))
+		if (ceiling)
 			msr.rotateX(180);
 
 		ArmRenderer.transformBase(msr, baseAngle);
-		base.getInstance()
-				.setTransform(msLocal);
+		base.setTransform(msLocal);
 
 		ArmRenderer.transformLowerArm(msr, lowerArmAngle);
-		lowerBody.getInstance()
-				.setTransform(msLocal)
+		lowerBody.setTransform(msLocal)
 				.setColor(color);
 
 		ArmRenderer.transformUpperArm(msr, upperArmAngle);
-		upperBody.getInstance()
-				.setTransform(msLocal)
+		upperBody.setTransform(msLocal)
 				.setColor(color);
 
 		ArmRenderer.transformHead(msr, headAngle);
-		head.getInstance()
-				.setTransform(msLocal);
+		head.setTransform(msLocal);
 
 		ArmRenderer.transformClaw(msr);
-		claw.getInstance()
-				.setTransform(msLocal);
+		claw.setTransform(msLocal);
 
 		ItemStack item = this.arm.heldItem;
 		ItemRenderer itemRenderer = Minecraft.getInstance()
@@ -129,9 +156,7 @@ public class ArmInstance extends SingleRotatingInstance implements IDynamicInsta
 			msLocal.push();
 			int flip = index * 2 - 1;
 			ArmRenderer.transformClawHalf(msr, hasItem, isBlockItem, flip);
-			clawGrips.get(index)
-					.getInstance()
-					.setTransform(msLocal);
+			clawGrips.get(index).setTransform(msLocal);
 			msLocal.pop();
 		}
 	}
@@ -140,7 +165,7 @@ public class ArmInstance extends SingleRotatingInstance implements IDynamicInsta
 	public void updateLight() {
 		super.updateLight();
 
-		relight(pos, models.stream().map(InstanceKey::getInstance));
+		relight(pos, models.stream());
 	}
 
 	@Override
@@ -151,6 +176,6 @@ public class ArmInstance extends SingleRotatingInstance implements IDynamicInsta
 	@Override
 	public void remove() {
 		super.remove();
-		models.forEach(InstanceKey::delete);
+		models.forEach(InstanceData::delete);
 	}
 }
